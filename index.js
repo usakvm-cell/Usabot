@@ -1,23 +1,46 @@
 const { Telegraf } = require('telegraf');
-const express = require('express');
-const app = express();
+const gplay = require('google-play-scraper');
 
-const bot = new Telegraf(process.env.BOT_TOKEN);
+const BOT_TOKEN = process.env.BOT_TOKEN;
+const CHAT_ID = process.env.CHAT_ID; // твой ID из @userinfobot
 
-bot.start((ctx) => {
-  ctx.reply('🇺🇸 Welcome to USA Bot!\nНапиши /games чтобы увидеть игры');
-});
+const bot = new Telegraf(BOT_TOKEN);
+const seen = new Set();
 
-bot.command('games', (ctx) => {
-  ctx.reply('🎮 USA Games:\n/states - викторина штаты\n/presidents - президенты\n/capitals - столицы');
-});
+const REGIONS = ['us', 'gb', 'de', 'jp', 'kr', 'in', 'br', 'ru', 'fr', 'ca', 'au', 'it', 'es', 'mx', 'id'];
 
-bot.command('states', (ctx) => ctx.reply('Сколько штатов в США? 50! 🇺🇸'));
-bot.command('presidents', (ctx) => ctx.reply('Первый президент - Джордж Вашингтон!'));
-bot.command('capitals', (ctx) => ctx.reply('Столица США - Вашингтон D.C.!'));
-
-bot.command('test', (ctx) => ctx.reply('Бот работает! 🚀'));
+async function checkNewGames() {
+  for (const country of REGIONS) {
+    try {
+      const games = await gplay.list({
+        category: gplay.category.GAME,
+        collection: gplay.collection.NEW_FREE,
+        country: country,
+        num: 10
+      });
+      
+      for (const game of games) {
+        if (!seen.has(game.appId)) {
+          seen.add(game.appId);
+          const text = `🎮 *NEW GAME* [${country.toUpperCase()}]\n\n*${game.title}*\n_${game.developer}_\n\n📲 https://play.google.com/store/apps/details?id=${game.appId}\n\n#${country} #newgame`;
+          
+          await bot.telegram.sendPhoto(CHAT_ID, game.icon, {
+            caption: text,
+            parse_mode: 'Markdown'
+          });
+          console.log(`Sent: ${game.title} from ${country}`);
+          await new Promise(r => setTimeout(r, 2000)); // чтоб не забанили
+        }
+      }
+    } catch (e) {
+      console.log(`Error ${country}:`, e.message);
+    }
+  }
+}
 
 bot.launch();
-app.get('/', (req,res) => res.send('Bot OK'));
-app.listen(process.env.PORT || 3000, () => console.log('Started'));
+console.log("Radar started...");
+
+// чекаем каждые 2 минуты
+setInterval(checkNewGames, 2 * 60 * 1000);
+checkNewGames();
